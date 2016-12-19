@@ -190,16 +190,16 @@ def scenario_B(N = 100,
     
 def scenario_C(N = 100,
                n_iter = 1000,
-               scale = 1.,
+               covariance = 1.,
                distribution_type = 'uniform',
                method = None,
                **kwargs):
     """
     Scenario C. Continuous risk factor, treatment correlated to risk factor.
-    Strength of correlation specified by scale_    
+    Strength of correlation specified by covariance_    
     
     n_iter = number of iterations for generating CIs
-    numsca = number of scales (ie. standard deviations to try)
+    numsca = number of covariances (ie. standard deviations to try)
     N = number of samples per distribution    
     x = the risk factor
     treat = the treatment value
@@ -226,7 +226,7 @@ def scenario_C(N = 100,
             x = np.vstack([np.random.uniform(low=0.,high=1.,size=(N,1))])   
         else:
             raise ValueError('distribution_type [{}] not defined.'.format(distribution_type))            
-        treat = np.reshape([np.random.normal(loc=a,scale=scale) for a in x], newshape=x.shape)
+        treat = np.reshape([np.random.normal(loc=a,scale=covariance) for a in x], newshape=x.shape)
         X = np.hstack([x, treat])
         y = np.random.binomial(1,logisticfun(X[:,0])) # generate the outcome
         if method == 'matchdist':            
