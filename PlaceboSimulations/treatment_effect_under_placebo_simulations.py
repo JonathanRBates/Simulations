@@ -62,21 +62,25 @@ def _distance_match_1_to_1(pwd, pwd_max):
     conditional on the distance being bounded by the value of pwd_max.    
     """
     n = pwd.shape[0]
-    m = pwd.shape[1]
     nmatched = 0
     mpairs = -1*np.ones((n,2),int)    
     for i in range(n):
-        candidates = np.argsort(pwd[i,:])         
-        for j in range(m):
-            if candidates[j] not in mpairs[:,1]:
-                break   
-        if pwd[i,candidates[j]] < pwd_max:
-            mpairs[nmatched,0] = i    
-            mpairs[nmatched,1] = candidates[j]    
-            nmatched=nmatched+1   
+        # candidates = np.argsort(pwd[i,:])  # use generator to opt?                  
+        # for j in range(pwd.shape[1]):
+        #     if candidates[j] not in mpairs[:,1]:
+        #         break   
+        # if pwd[i,candidates[j]] < pwd_max:
+        #     mpairs[nmatched,0] = i    
+        #     mpairs[nmatched,1] = candidates[j]    
+        #     nmatched=nmatched+1   
+        m_i = next( (v for v in np.argsort(pwd[i,:]) if v not in mpairs[:,1]), None)
+        if pwd[i,m_i] < pwd_max:
+             mpairs[nmatched,0] = i    
+             mpairs[nmatched,1] = m_i
+             nmatched=nmatched+1           
     return mpairs[:nmatched,]        
 
-def match_dist(x, treat, caliper=0.5):
+def match_dist(x, treat, method='greedy', caliper=0.5):
     """
     Produce Matches between treated and control using distances
     
@@ -88,15 +92,21 @@ def match_dist(x, treat, caliper=0.5):
     # Old, 1-1 approach: 
     #   from sklearn.metrics.pairwise import pairwise_distances
     #   pwd = pairwise_distances(x[bool_treat].reshape(-1,1), x[~bool_treat].reshape(-1,1), n_jobs=-1)  
-    #   mpairs = _distance_match_1_to_1(dmat, caliper)  
+    #   
     # Alternative, "optimal" approach:
     #   from scipy.optimize import linear_sum_assignment
     #   row_ind, col_ind = linear_sum_assignment(pwd) 
     #
     # Note: adding reshape(-1,1) for case dim(x) = 1
-    pwd = cdist(x[bool_treat].reshape(-1,1), x[~bool_treat].reshape(-1,1), metric='euclidean') 
-    match_id = np.argmin(pwd,axis=1)
-    mpairs = np.array([[i, j] for (i,j) in zip(np.array(range(pwd.shape[0])), match_id) if pwd[i,j] < caliper])    
+    pwd = cdist(x[bool_treat].reshape(-1,1), x[~bool_treat].reshape(-1,1), metric='euclidean')     
+    if method == 'greedy':
+        match_id = np.argmin(pwd,axis=1)
+        mpairs = np.array([[i, j] for (i,j) in zip(np.array(range(pwd.shape[0])), match_id) if pwd[i,j] < caliper])   
+    elif method in ['1to1', '1-1', '1-to-1']:
+        mpairs = _distance_match_1_to_1(pwd, caliper)    
+    else:
+        raise NotImplementedError('method [{}] not defined.'.format(method)) 
+        
     if len(mpairs) > 0:
         idx_treat = np.where(bool_treat)[0][mpairs[:,0]]
         idx_control = np.where(~bool_treat)[0][mpairs[:,1]] 
@@ -167,16 +177,20 @@ def scenario_A(N = 200,
         #     print('.',end='')        
         x = np.random.binomial(1,p_has_risk_factor,size=(N,))
         treat = np.random.binomial(1,p_treat_given_risk_factor*x+p_treat_given_no_risk_factor*(1-x))         
-        y = np.squeeze(np.random.binomial(1,p_outcome_given_risk_factor*x+p_outcome_given_no_risk_factor*(1-x)))
+        y = np.random.binomial(1,p_outcome_given_risk_factor*x+p_outcome_given_no_risk_factor*(1-x))
         X = np.vstack([x, treat]).T
         if method == 'matchexact':
             idx = match_exact(x, treat)            
             X = X[idx,:]
             y = y[idx]    
-        elif method == 'matchdist':            
-            idx = match_dist(x, treat)              
+        elif method == 'matchdist, greedy':            
+            idx = match_dist(x, treat, method='greedy', caliper=0.5)              
             X = X[idx,:]
-            y = y[idx]            
+            y = y[idx]       
+        elif method == 'matchdist, 1-1':            
+            idx = match_dist(x, treat, method='1-1', caliper=0.5)              
+            X = X[idx,:]
+            y = y[idx]        
         try:
             clf.fit(X,y)
             estimated_treatment_effect[itera] = treatment_effect_estimator(X,clf,method='gcomp')       
@@ -225,10 +239,14 @@ def scenario_B(N = 100,
             raise ValueError('distribution_type [{}] not defined.'.format(distribution_type)) 
         X = np.vstack([x, treat]).T
         y = generate_binomial_outcome(X[:,0]) # generate the outcome
-        if method == 'matchdist':   
-            idx = match_dist(x, treat, caliper)                       
+        if method == 'matchdist, greedy':            
+            idx = match_dist(x, treat, method='greedy', caliper=caliper)              
             X = X[idx,:]
-            y = y[idx]
+            y = y[idx]       
+        elif method == 'matchdist, 1-1':            
+            idx = match_dist(x, treat, method='1-1', caliper=caliper)              
+            X = X[idx,:]
+            y = y[idx]   
         try:
             clf.fit(X,y)
             estimated_treatment_effect[itera] = treatment_effect_estimator(X,clf,method=te_estimator)
@@ -286,10 +304,14 @@ def scenario_C(N = 100,
         treat = np.reshape([np.random.normal(loc=a,scale=covariance) for a in x], newshape=x.shape)
         X = np.vstack([x, treat]).T
         y = generate_binomial_outcome(X[:,0]) # generate the outcome
-        if method == 'matchdist':            
-            idx = match_dist(x, treat, caliper)              
+        if method == 'matchdist, greedy':            
+            idx = match_dist(x, treat, method='greedy', caliper=caliper)              
             X = X[idx,:]
-            y = y[idx]
+            y = y[idx]       
+        elif method == 'matchdist, 1-1':            
+            idx = match_dist(x, treat, method='1-1', caliper=caliper)              
+            X = X[idx,:]
+            y = y[idx]   
         try:
             clf.fit(X,y)
             estimated_treatment_effect[itera] = treatment_effect_estimator(X,clf,method='gcomp')
