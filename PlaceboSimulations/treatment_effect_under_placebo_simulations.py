@@ -74,10 +74,10 @@ def _distance_match_1_to_1(pwd, pwd_max):
         #     mpairs[nmatched,1] = candidates[j]    
         #     nmatched=nmatched+1   
         m_i = next( (v for v in np.argsort(pwd[i,:]) if v not in mpairs[:,1]), None)
-        if pwd[i,m_i] < pwd_max:
-             mpairs[nmatched,0] = i    
-             mpairs[nmatched,1] = m_i
-             nmatched=nmatched+1           
+        if m_i is not None and (pwd[i,m_i] < pwd_max):
+            mpairs[nmatched,0] = i    
+            mpairs[nmatched,1] = m_i
+            nmatched=nmatched+1  
     return mpairs[:nmatched,]        
 
 def match_dist(x, treat, method='greedy', caliper=0.5):
